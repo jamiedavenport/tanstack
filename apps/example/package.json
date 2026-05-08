@@ -16,6 +16,7 @@
     "@content-collections/mdx": "^0.2.2",
     "@content-collections/vite": "^0.3.0",
     "@databuddy/sdk": "^2.4.11",
+    "@jxdltd/tanstack": "workspace:*",
     "@offstage/react": "^0.0.2",
     "@phosphor-icons/react": "^2.1.10",
     "@shikijs/rehype": "^4.0.2",

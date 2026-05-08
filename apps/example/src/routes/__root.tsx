@@ -2,15 +2,20 @@ import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-r
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { OffstageProvider } from "@offstage/react";
+import { ogMeta } from "@jxdltd/tanstack/og/router";
 
 import appCss from "../styles.css?url";
 import { Databuddy } from "@databuddy/sdk/react";
 
 export const Route = createRootRoute({
-  head: () => ({
+  head: (ctx) => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      ...ogMeta(ctx, {
+        siteName: "Auvia",
+        siteUrl: "https://auvia.io",
+      }),
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
