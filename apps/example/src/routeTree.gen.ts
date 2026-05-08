@@ -8,97 +8,97 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as IndexRouteImport } from "./routes/index";
-import { Route as BlogIndexRouteImport } from "./routes/blog/index";
-import { Route as OgSplatRouteImport } from "./routes/og/$";
-import { Route as BlogSlugRouteImport } from "./routes/blog/$slug";
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as BlogIndexRouteImport } from './routes/blog/index'
+import { Route as OgSplatRouteImport } from './routes/og/$'
+import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 
 const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const BlogIndexRoute = BlogIndexRouteImport.update({
-  id: "/blog/",
-  path: "/blog/",
+  id: '/blog/',
+  path: '/blog/',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const OgSplatRoute = OgSplatRouteImport.update({
-  id: "/og/$",
-  path: "/og/$",
+  id: '/og/$',
+  path: '/og/$',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const BlogSlugRoute = BlogSlugRouteImport.update({
-  id: "/blog/$slug",
-  path: "/blog/$slug",
+  id: '/blog/$slug',
+  path: '/blog/$slug',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "/blog/$slug": typeof BlogSlugRoute;
-  "/og/$": typeof OgSplatRoute;
-  "/blog/": typeof BlogIndexRoute;
+  '/': typeof IndexRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/og/$': typeof OgSplatRoute
+  '/blog/': typeof BlogIndexRoute
 }
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "/blog/$slug": typeof BlogSlugRoute;
-  "/og/$": typeof OgSplatRoute;
-  "/blog": typeof BlogIndexRoute;
+  '/': typeof IndexRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/og/$': typeof OgSplatRoute
+  '/blog': typeof BlogIndexRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  "/": typeof IndexRoute;
-  "/blog/$slug": typeof BlogSlugRoute;
-  "/og/$": typeof OgSplatRoute;
-  "/blog/": typeof BlogIndexRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/og/$': typeof OgSplatRoute
+  '/blog/': typeof BlogIndexRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/blog/$slug" | "/og/$" | "/blog/";
-  fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/blog/$slug" | "/og/$" | "/blog";
-  id: "__root__" | "/" | "/blog/$slug" | "/og/$" | "/blog/";
-  fileRoutesById: FileRoutesById;
+  fileRoutesByFullPath: FileRoutesByFullPath
+  fullPaths: '/' | '/blog/$slug' | '/og/$' | '/blog/'
+  fileRoutesByTo: FileRoutesByTo
+  to: '/' | '/blog/$slug' | '/og/$' | '/blog'
+  id: '__root__' | '/' | '/blog/$slug' | '/og/$' | '/blog/'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  BlogSlugRoute: typeof BlogSlugRoute;
-  OgSplatRoute: typeof OgSplatRoute;
-  BlogIndexRoute: typeof BlogIndexRoute;
+  IndexRoute: typeof IndexRoute
+  BlogSlugRoute: typeof BlogSlugRoute
+  OgSplatRoute: typeof OgSplatRoute
+  BlogIndexRoute: typeof BlogIndexRoute
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/blog/": {
-      id: "/blog/";
-      path: "/blog";
-      fullPath: "/blog/";
-      preLoaderRoute: typeof BlogIndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/og/$": {
-      id: "/og/$";
-      path: "/og/$";
-      fullPath: "/og/$";
-      preLoaderRoute: typeof OgSplatRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/blog/$slug": {
-      id: "/blog/$slug";
-      path: "/blog/$slug";
-      fullPath: "/blog/$slug";
-      preLoaderRoute: typeof BlogSlugRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/': {
+      id: '/blog/'
+      path: '/blog'
+      fullPath: '/blog/'
+      preLoaderRoute: typeof BlogIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/og/$': {
+      id: '/og/$'
+      path: '/og/$'
+      fullPath: '/og/$'
+      preLoaderRoute: typeof OgSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/$slug': {
+      id: '/blog/$slug'
+      path: '/blog/$slug'
+      fullPath: '/blog/$slug'
+      preLoaderRoute: typeof BlogSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,16 +107,16 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugRoute: BlogSlugRoute,
   OgSplatRoute: OgSplatRoute,
   BlogIndexRoute: BlogIndexRoute,
-};
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()
 
-import type { getRouter } from "./router.tsx";
-import type { createStart } from "@tanstack/react-start";
-declare module "@tanstack/react-start" {
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
   interface Register {
-    ssr: true;
-    router: Awaited<ReturnType<typeof getRouter>>;
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
   }
 }
