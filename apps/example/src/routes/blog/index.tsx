@@ -1,21 +1,26 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRightIcon } from "@phosphor-icons/react";
 import { allPosts } from "content-collections";
-import { pageMeta } from "../../lib/seo";
+import { ogMeta } from "@jxdltd/tanstack/og/router";
+import { pageMeta, SITE_NAME, SITE_URL } from "../../lib/seo";
 import { SiteHeader } from "../../components/SiteHeader";
 import { SiteFooter } from "../../components/SiteFooter";
 import { RadialDots } from "../../components/RadialDots";
 
 export const Route = createFileRoute("/blog/")({
   component: BlogIndex,
-  head: () =>
-    pageMeta({
+  head: (ctx) => {
+    const seo = pageMeta({
       title: "Blog | Auvia",
       description:
         "Notes on client intake, conversion, and the economics of running a modern UK law or accountancy firm.",
       path: "/blog",
-      image: "/og/blog.png",
-    }),
+    });
+    return {
+      meta: [...seo.meta, ...ogMeta(ctx, { siteName: SITE_NAME, siteUrl: SITE_URL })],
+      links: seo.links,
+    };
+  },
 });
 
 function BlogIndex() {

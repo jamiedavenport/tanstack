@@ -6,7 +6,8 @@ import {
   ClockIcon,
   SparkleIcon,
 } from "@phosphor-icons/react";
-import { pageMeta } from "../lib/seo";
+import { ogMeta } from "@jxdltd/tanstack/og/router";
+import { pageMeta, SITE_NAME, SITE_URL } from "../lib/seo";
 import { ChatbotDemo } from "../components/ChatbotDemo";
 import { AdminDashboard } from "../components/AdminDashboard";
 import { RadialDots } from "../components/RadialDots";
@@ -15,14 +16,18 @@ import { SiteFooter } from "../components/SiteFooter";
 
 export const Route = createFileRoute("/")({
   component: Home,
-  head: () =>
-    pageMeta({
+  head: (ctx) => {
+    const seo = pageMeta({
       title: "Auvia | AI client intake for law firms and accountants",
       description:
         "Auvia responds in seconds, qualifies automatically, and books the meeting directly into your fee earner's calendar, 24 hours a day, without your team lifting a finger.",
       path: "/",
-      image: "/og/home.png",
-    }),
+    });
+    return {
+      meta: [...seo.meta, ...ogMeta(ctx, { siteName: SITE_NAME, siteUrl: SITE_URL })],
+      links: seo.links,
+    };
+  },
 });
 
 const FEATURES = [

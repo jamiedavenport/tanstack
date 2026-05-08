@@ -15,11 +15,37 @@ const blogSlugs = fs
   .filter((f) => f.endsWith(".mdx"))
   .map((f) => f.replace(/\.mdx$/, ""));
 
+const ogDevStripPng = {
+  name: "og-dev-strip-png",
+  apply: "serve" as const,
+  configureServer(server: { middlewares: { use: (fn: unknown) => void } }) {
+    type ConnectHandler = (req: { url?: string }, res: unknown, next: () => void) => void;
+    const handler: ConnectHandler = (req, _res, next) => {
+      if (req.url) {
+        const m = req.url.match(/^(\/og\/[^?]*)\.png(\?.*)?$/);
+        if (m) req.url = m[1] + (m[2] ?? "");
+      }
+      next();
+    };
+    server.middlewares.use(handler);
+  },
+};
+
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
+  optimizeDeps: {
+    exclude: ["@resvg/resvg-js"],
+  },
+  ssr: {
+    external: ["@resvg/resvg-js"],
+    optimizeDeps: {
+      exclude: ["@resvg/resvg-js"],
+    },
+  },
   plugins: [
+    ogDevStripPng,
     devtools(),
-    nitro({ rollupConfig: { external: [/^@sentry\//] } }),
+    nitro({ rollupConfig: { external: [/^@sentry\//, /^@resvg\//] } }),
     tailwindcss(),
     contentCollections(),
     tanstackStart({

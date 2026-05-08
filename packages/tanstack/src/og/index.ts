@@ -62,10 +62,12 @@ export type OgTemplateContext = {
   request: Request;
 };
 
+export type OgTemplateFontsResolver = () => OgTemplateFont[] | Promise<OgTemplateFont[]>;
+
 export type OgTemplateModule = {
   width: number;
   height: number;
-  fonts: OgTemplateFont[];
+  fonts: OgTemplateFont[] | OgTemplateFontsResolver;
   render: (ctx: OgTemplateContext) => ReactNode | Promise<ReactNode>;
 };
 

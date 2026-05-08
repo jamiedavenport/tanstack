@@ -1,8 +1,9 @@
 import { defineOgConfig, ignoreOg } from "@jxdltd/tanstack/og";
+import { allPosts } from "content-collections";
 
 export default defineOgConfig({
   "/": () => ({
-    title: "Auvia",
+    title: "Every enquiry handled. Every meeting booked. No staff required.",
     description: "AI-powered client intake for law firms and accountancy practices.",
     type: "website",
   }),
@@ -12,9 +13,21 @@ export default defineOgConfig({
     description:
       "What we've learned helping UK law firms and accountancy practices stop losing enquiries to slow response times.",
     type: "website",
+    tag: "Blog",
   }),
 
-  "/blog/$slug": () => ignoreOg,
+  "/blog/$slug": ({ params }) => {
+    const post = allPosts.find((p) => p.slug === params.slug);
+    if (!post) return ignoreOg;
+    return {
+      title: post.title,
+      description: post.excerpt,
+      type: "article",
+      author: post.author ?? "Auvia",
+      date: post.date,
+      tag: post.tag,
+    };
+  },
 
   "/og/$": () => ignoreOg,
 });

@@ -7,8 +7,7 @@
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "og": "tsx scripts/og/generate.ts",
-    "build": "pnpm run og && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -19,6 +18,7 @@
     "@jxdltd/tanstack": "workspace:*",
     "@offstage/react": "^0.0.2",
     "@phosphor-icons/react": "^2.1.10",
+    "@resvg/resvg-js": "^2.6.2",
     "@shikijs/rehype": "^4.0.2",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "latest",
@@ -28,6 +28,7 @@
     "@tanstack/react-start": "latest",
     "@tanstack/router-plugin": "^1.132.0",
     "@types/hast": "^3.0.4",
+    "geist": "^1.7.0",
     "lucide-react": "^1.14.0",
     "motion": "^12.38.0",
     "nitro": "npm:nitro-nightly@latest",
@@ -41,16 +42,12 @@
   },
   "devDependencies": {
     "@fontsource/plus-jakarta-sans": "^5.2.8",
-    "@resvg/resvg-js": "^2.6.2",
     "@shikijs/types": "^4.0.2",
     "@tanstack/devtools-vite": "latest",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
-    "geist": "^1.7.0",
-    "satori": "^0.26.0",
-    "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0"
   },

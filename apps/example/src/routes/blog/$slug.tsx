@@ -1,7 +1,8 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { allPosts } from "content-collections";
-import { pageMeta } from "../../lib/seo";
+import { ogMeta } from "@jxdltd/tanstack/og/router";
+import { pageMeta, SITE_NAME, SITE_URL } from "../../lib/seo";
 import { SiteHeader } from "../../components/SiteHeader";
 import { SiteFooter } from "../../components/SiteFooter";
 import { MdxContent } from "../../components/MdxContent";
@@ -13,16 +14,20 @@ export const Route = createFileRoute("/blog/$slug")({
     return post;
   },
   component: BlogPost,
-  head: ({ loaderData }) => {
+  head: (ctx) => {
+    const { loaderData } = ctx;
     if (!loaderData) return {};
-    return pageMeta({
+    const seo = pageMeta({
       title: `${loaderData.title} | Auvia`,
       description: loaderData.excerpt,
       path: `/blog/${loaderData.slug}`,
       type: "article",
       publishedTime: loaderData.date,
-      image: `/og/blog/${loaderData.slug}.png`,
     });
+    return {
+      meta: [...seo.meta, ...ogMeta(ctx, { siteName: SITE_NAME, siteUrl: SITE_URL })],
+      links: seo.links,
+    };
   },
 });
 

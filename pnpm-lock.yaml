@@ -39,6 +39,9 @@ importers:
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@resvg/resvg-js':
+        specifier: ^2.6.2
+        version: 2.6.2
       '@shikijs/rehype':
         specifier: ^4.0.2
         version: 4.0.2
@@ -66,6 +69,9 @@ importers:
       '@types/hast':
         specifier: ^3.0.4
         version: 3.0.4
+      geist:
+        specifier: ^1.7.0
+        version: 1.7.0(next@16.2.6(@babel/core@7.29.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))
       lucide-react:
         specifier: ^1.14.0
         version: 1.14.0(react@19.2.6)
@@ -100,9 +106,6 @@ importers:
       '@fontsource/plus-jakarta-sans':
         specifier: ^5.2.8
         version: 5.2.8
-      '@resvg/resvg-js':
-        specifier: ^2.6.2
-        version: 2.6.2
       '@shikijs/types':
         specifier: ^4.0.2
         version: 4.0.2
@@ -121,15 +124,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(@voidzero-dev/vite-plus-core@0.1.20(@types/node@22.19.18)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.4))
-      geist:
-        specifier: ^1.7.0
-        version: 1.7.0(next@16.2.6(@babel/core@7.29.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))
-      satori:
-        specifier: ^0.26.0
-        version: 0.26.0
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
@@ -138,6 +132,13 @@ importers:
         version: '@voidzero-dev/vite-plus-core@0.1.20(@types/node@22.19.18)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.4)'
 
   packages/tanstack:
+    dependencies:
+      '@resvg/resvg-js':
+        specifier: ^2.6.2
+        version: 2.6.2
+      satori:
+        specifier: ^0.26.0
+        version: 0.26.0
     devDependencies:
       '@tanstack/react-router':
         specifier: latest
@@ -5343,6 +5344,7 @@ snapshots:
       '@esbuild/win32-arm64': 0.27.7
       '@esbuild/win32-ia32': 0.27.7
       '@esbuild/win32-x64': 0.27.7
+    optional: true
 
   escalade@3.2.0: {}
 
@@ -5440,6 +5442,7 @@ snapshots:
   get-tsconfig@4.14.0:
     dependencies:
       resolve-pkg-maps: 1.0.0
+    optional: true
 
   glob-parent@5.1.2:
     dependencies:
@@ -6395,7 +6398,8 @@ snapshots:
       unified: 11.0.5
       vfile: 6.0.3
 
-  resolve-pkg-maps@1.0.0: {}
+  resolve-pkg-maps@1.0.0:
+    optional: true
 
   resolve@1.22.12:
     dependencies:
@@ -6616,6 +6620,7 @@ snapshots:
       get-tsconfig: 4.14.0
     optionalDependencies:
       fsevents: 2.3.3
+    optional: true
 
   typescript@6.0.3: {}
 

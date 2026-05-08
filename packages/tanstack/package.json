@@ -31,6 +31,10 @@
     "test": "vp test",
     "check": "vp check"
   },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "satori": "^0.26.0"
+  },
   "devDependencies": {
     "@tanstack/react-router": "latest",
     "@types/react": "^19.2.0",
