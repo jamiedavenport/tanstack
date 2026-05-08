@@ -1,47 +1,86 @@
 # `@jxdltd/tanstack/og` — Design plan
 
-A zero-config Vite plugin that generates Open Graph images and injects the matching meta tags for any TanStack Start site.
+A Vite plugin that ships a single OG-image API route for any TanStack Start site. Cache-Control headers and a CDN make it perform like a static asset — without the build-pipeline machinery.
 
-> **Companion doc:** [`og-current.md`](./og-current.md) describes how `auvia.io` does this today. This plan generalizes that approach so any TanStack Start project can adopt it with one plugin entry and one head spread.
+> **Companion:** [`og-current.md`](./og-current.md) describes how `auvia.io` does this today (build-time PNGs, manual manifest, fixed dimensions). This plan generalises and simplifies it.
 
 ## Goals
 
-- **One-line install.** Add the plugin to `vite.config.ts`. Everything else has sensible defaults.
-- **One-line wiring.** Spread our helper into the root route's `head()` and OG meta tags appear on every page automatically.
-- **Source of truth = `head()`.** Title, description, and explicit image come from each route's existing `head()`. The plugin never asks users to duplicate metadata.
-- **Static-first, dynamic-capable.** Prerender PNGs for every static route at build time. For routes with params, ship an on-demand server endpoint so users don't have to choose between SSG and dynamic content.
-- **Framework-agnostic content layer.** Works with content-collections, MDX, fetch-from-DB loaders, or anything else — because it only reads `head()` output.
-- **Bring your own template.** Default template is opinionated and good. Power users replace it with a JSX function.
+- **One plugin entry** in `vite.config.ts`.
+- **One template file** the user writes (`src/og/template.tsx`).
+- **One spread** (`...ogMeta(ctx)`) in the root route's `head()`.
+- **Single code path in dev and prod.** The same handler renders the image whether you're running `vite dev` or hitting `.output/server/index.mjs`.
+- **`head()` + `loader` are the source of truth** for title / description. The plugin never asks the user to repeat metadata.
+- **Cache-Control friendly** — content-hashed URLs + immutable headers offload everything to the CDN after the first hit.
 
 ## Non-goals
 
-- Browser-automation rendering (Puppeteer/Playwright). Satori + Resvg covers 95% of designs and is two orders of magnitude faster.
-- Sitemaps, robots.txt, full SEO suite. Out of scope; this is the OG/Twitter card slice.
-- Non-Vite TanStack frameworks (CRA, Webpack ports). We bind to Vite hooks deliberately.
+- **No default template.** The plugin never picks a design. Templates are a brand decision; any built-in default would be wrong for everyone. Users write their own template (one file, ~30 lines), and that's where typography, colours, fonts, and layout live.
+- **No build-time prerender.** Cache headers + CDN cover the perf story; revisit only if a real deployment forces it.
+- **No fonts bundled.** Owned by the template module, not the plugin.
+- **No browser-screenshot rendering** (Puppeteer/Playwright). Satori + Resvg is fast enough.
+- **No SEO suite** (sitemaps, robots, etc.). Out of scope.
+
+## Why runtime-only
+
+Crawler timeouts are 5–30 s. A cold Satori + Resvg render of a non-pathological design is 50–250 ms. After the first hit, the CDN edge serves bytes — origin sees roughly one request per `(path, content-version)` tuple per CDN region.
+
+Build-time prerender would save the first-hit latency at the cost of a much heavier plugin, longer builds, and stale images for any content edited between deploys. Wrong tradeoff for v1.
 
 ## Target user experience
 
-**Install:**
+### 1. Install
 
 ```ts
 // vite.config.ts
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { og } from "@jxdltd/tanstack/og";
-import viteReact from "@vitejs/plugin-react";
-import { nitro } from "nitro/vite";
-import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [
-    tanstackStart(),
-    og(), // <- that's it
-    viteReact(),
-    nitro(),
-  ],
+  plugins: [tanstackStart(), og(), viteReact(), nitro()],
 });
 ```
 
-**Wire once in the root route:**
+### 2. Write a template (this is where design lives)
+
+```tsx
+// src/og/template.tsx
+import { defineOgTemplate } from "@jxdltd/tanstack/og";
+import InterRegular from "./fonts/Inter-Regular.ttf?arraybuffer";
+import InterBold from "./fonts/Inter-Bold.ttf?arraybuffer";
+
+export default defineOgTemplate({
+  width: 1200,
+  height: 630,
+  fonts: [
+    { name: "Inter", data: InterRegular, weight: 400 },
+    { name: "Inter", data: InterBold, weight: 700 },
+  ],
+  render: ({ head, loaderData, route, staticData }) => (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        height: "100%",
+        padding: 64,
+        background: "#fff",
+        fontFamily: "Inter",
+      }}
+    >
+      <span style={{ fontSize: 24, color: "#888" }}>my-site.com</span>
+      <h1 style={{ fontSize: 72, fontWeight: 700, marginTop: "auto" }}>{head.title}</h1>
+      {head.description && <p style={{ fontSize: 28, color: "#555" }}>{head.description}</p>}
+    </div>
+  ),
+});
+```
+
+`defineOgTemplate(spec)` is a typed identity helper — exists purely for IntelliSense over `render`'s context. The template module owns dimensions, fonts, and JSX. The plugin never imposes any of those.
+
+For sites that need multiple designs (post card vs. landing card vs. doc page), branch inside `render` on `route.path` or `staticData.og.template`. We deliberately don't ship a registry API — branching inside one render function is one less concept to learn.
+
+### 3. Wire the head meta
 
 ```tsx
 // src/routes/__root.tsx
@@ -52,421 +91,286 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width,initial-scale=1" },
-      ...ogMeta(ctx), // <- emits og:image / twitter:image / og:type, etc.
+      ...ogMeta(ctx),
     ],
   }),
   component: RootComponent,
 });
 ```
 
-**Override per route (optional):**
+`ogMeta(ctx)` reads from `ctx.matches` and emits the canonical `og:*` and `twitter:*` set, with the `og:image` URL pointing at the generated server route. Per-route `head()` entries override individual fields naturally because TanStack Router dedupes meta by `name`/`property`.
 
-```tsx
-// src/routes/blog/$slug.tsx
-export const Route = createFileRoute("/blog/$slug")({
-  loader: ({ params }) => fetchPost(params.slug),
-  head: ({ loaderData }) => ({
-    meta: [{ title: loaderData.title }, { name: "description", content: loaderData.excerpt }],
-  }),
-  staticData: {
-    og: { template: "post", tag: loaderData?.tag }, // optional override
-  },
-});
-```
-
-**That is the entire user-facing surface.** No manifest. No build script. No manual image references in `head()`.
+That is the entire user-facing surface: **one plugin entry, one template file, one head spread.**
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│  Vite plugin: og()                                                   │
-│                                                                      │
-│  configResolved ─► read tanstackStart() config (prerender, srcDir)   │
-│                    capture base, publicDir, root                     │
-│                                                                      │
-│  buildStart     ─► walk srcDir/routes  OR  parse routeTree.gen.ts    │
-│                    build RouteManifest = [{ path, file, hasParams }] │
-│                                                                      │
-│  resolveId/load ─► virtual:tanstack-og/manifest                      │
-│                    virtual:tanstack-og/template (user template)      │
-│                                                                      │
-│  configureServer (dev)                                               │
-│                 ─► middleware: GET /__og/*.png                       │
-│                    render on-demand via satori + resvg               │
-│                    LRU memoize on (path, head digest)                │
-│                                                                      │
-│  closeBundle (client build)                                          │
-│                 ─► for each static path:                             │
-│                      run loader + head() in worker (loaded from SSR  │
-│                        build output)                                 │
-│                      → render template → satori → resvg → PNG       │
-│                      → emitFile to dist/og/<slug>.png                │
-│                    write build manifest dist/og/manifest.json         │
-│                                                                      │
-│  emit server route                                                   │
-│                 ─► /__og/$.png (dynamic) backed by runtime renderer │
-│                    used in prod for routes the build couldn't        │
-│                    enumerate (params, conditional content)           │
-└──────────────────────────────────────────────────────────────────────┘
-
-User code
-─────────
-__root.head() spreads ogMeta(ctx)
-  → at SSR/render time, ogMeta inspects ctx.matches to derive
-    the current route's OG image URL + canonical og:* tags
-  → URL points at /og/<slug>.png (static) or /__og/<slug>.png (dynamic)
+Crawler / browser
+   │  GET /og/blog/foo.png?v=<contentHash>
+   ▼
+Server route (emitted by og() plugin)
+   1. parse path → route + params via TanStack Router matcher
+   2. import the matched route module from the SSR runtime
+   3. run loader(params) → head({ params, loaderData })
+   4. extract { title, description, image } from head's meta
+   5. call userTemplate.render({ route, head, loaderData, staticData })
+   6. satori → SVG → resvg → PNG
+   7. respond
+   ▼
+HTTP response
+   Content-Type: image/png
+   Cache-Control: public, max-age=31536000, immutable
+   ETag: "<contentHash>"
 ```
+
+`?v=<contentHash>` is computed by `ogMeta(ctx)` at SSR render time — same inputs (head + loaderData digest + template version) produce the same hash, so URLs are stable across deploys for unchanged content and rotate automatically when anything changes.
+
+```
+SSR render of /blog/foo
+   ogMeta(ctx) inspects ctx.matches → matched route is /blog/$slug
+   computes hash = sha256(headMeta + loaderDataDigest + templateVersion)
+   emits <meta property="og:image" content="https://my-site.com/og/blog/foo.png?v=<hash>">
+```
+
+When the post is edited, the template is changed, or the site is redeployed with new template source, the hash flips, the URL flips, the CDN treats it as a new resource, crawlers refetch. No manual cache busting.
 
 ## Components
 
-### 1. Vite plugin (`@jxdltd/tanstack/og`)
+### 1. The Vite plugin
 
-Default export `og(options?)` returns an array of Vite plugins (we may split into a router-tap plugin and an asset-emit plugin so they can be ordered correctly relative to `tanstackStart` and the router plugin).
+Small. Most of its job is wiring; the actual render lives in a runtime helper.
 
-Key hooks:
+| Hook                  | Responsibility                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configResolved`      | Resolve `templatePath` (default `src/og/template.{tsx,ts,jsx}`); capture `siteName`, `siteUrl`, `routePath`; detect Nitro target for renderer selection. |
+| `resolveId` + `load`  | Serve `virtual:tanstack-og/template` (re-exports the user's template) and `virtual:tanstack-og/config` (consumed by `ogMeta`).                           |
+| Server route emission | Inject a TanStack Start server route at `<routePath>/$.png` pointing at the runtime handler. (See "Open questions" for the mechanism.)                   |
+| `configureServer`     | Dev middleware that short-circuits the same path and uses Vite's SSR runner — same code path as prod, instantly reflecting template/route edits.         |
+| `handleHotUpdate`     | Invalidate the in-memory LRU when the template or any matched route module changes.                                                                      |
 
-| Hook                             | Responsibility                                                                                                    |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `config`                         | Inject sensible defaults; ensure `publicDir` accessible.                                                          |
-| `configResolved`                 | Find the sibling `tanstackStart` plugin in `config.plugins`, read its `prerender` settings (filter, pages, base). |
-| `buildStart`                     | Build the route manifest.                                                                                         |
-| `resolveId` + `load`             | Serve virtual modules (manifest, template, runtime helpers).                                                      |
-| `configureServer`                | Mount dev middleware at `/og/*.png` and `/__og/*.png`.                                                            |
-| `handleHotUpdate`                | Invalidate dev OG cache when route files, loader sources, or template change.                                     |
-| `generateBundle` / `closeBundle` | Emit static PNGs and write `og/manifest.json`.                                                                    |
+### 2. User template module
 
-### 2. Route discovery
-
-Two strategies, fall through in order:
-
-1. **Read `routeTree.gen.ts`.** After `@tanstack/router-plugin` has run, the file exists and contains the full route hierarchy with `path` and `id` strings. We import it via Vite's module graph (or read + parse the file directly). Most accurate, no convention duplication.
-2. **Walk `src/routes/`.** Same conventions the router plugin uses (`__root`, `_layout`, `$param`, `[.]ext` server routes, `routeFileIgnorePrefix`). We get this from the router plugin's resolved options where possible. Used as a fallback if `routeTree.gen.ts` isn't available yet (very early `buildStart` situations).
-
-For each entry we capture:
+Required. The plugin fails fast at startup if it can't find one — no fallback renderer.
 
 ```ts
-type RouteEntry = {
-  routePath: string; // "/blog/$slug"
-  routeFile: string; // absolute path
-  hasParams: boolean;
-  isLayout: boolean;
-  isApiRoute: boolean;
+type OgTemplateModule = {
+  width: number;
+  height: number;
+  fonts: Array<{
+    name: string;
+    data: ArrayBuffer | Buffer | Uint8Array;
+    weight?: 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+    style?: "normal" | "italic";
+  }>;
+  render: (ctx: OgRenderContext) => React.ReactNode | Promise<React.ReactNode>;
+};
+
+type OgRenderContext = {
+  route: { path: string; fullPath: string; params: Record<string, string> };
+  head: { title?: string; description?: string; image?: string };
+  loaderData: unknown;
+  staticData: Record<string, unknown>;
 };
 ```
 
-We filter out layout-only routes, server routes, and routes the user excluded via `filter`.
+`defineOgTemplate(spec)` returns the spec unchanged; it exists so editors infer the `render` context.
 
-### 3. Build-time rendering pipeline
+### 3. Server route handler
 
-For each **static** path (no params, not filtered out, not in user opt-out):
-
-1. Spawn a Node worker that imports the SSR build output (Vite's SSR bundle gives us the route module, including `loader` and `head`). For Start projects we follow the same path TanStack Start's prerender uses.
-2. Call the route's `loader` with synthesized `params` (none for static routes) to get `loaderData`.
-3. Call `head({ params, loaderData, matches, match })` and extract:
-   - `title`
-   - `description` (from `meta` array)
-   - `image` (from existing `og:image` if user set it explicitly)
-   - any `staticData.og` override
-4. Pass `{ route, head, loaderData, staticData.og }` to the template function.
-5. Render: `satori(jsx, { width, height, fonts })` → SVG → `new Resvg(svg).render().asPng()` → Buffer.
-6. `this.emitFile({ type: "asset", fileName: \`og/${slug}.png\`, source: pngBuffer })`.
-7. Append `{ path, slug, hash, contentType: "image/png" }` to `og/manifest.json` so the runtime helper can resolve URLs deterministically.
-
-For **dynamic** routes (params), we don't enumerate at build time by default. We expose:
-
-- A user opt-in to enumerate via `routes: { dynamic: { "/blog/$slug": (manifest) => ["/blog/foo", ...] } }`. Often backed by content-collections.
-- A built-in server route (next section) so dynamic routes still get a working OG URL at runtime.
-
-If `tanstackStart({ prerender })` is configured, we **reuse** that configuration. Any `pages: [...]` entries become enumerated dynamic routes for free; `filter` is shared. This means users who already prerender don't repeat themselves.
-
-### 4. Dev middleware
-
-`configureServer` mounts `/og/*.png` and `/__og/*.png`. Behavior:
-
-1. Match the incoming request path → resolve to a route in the manifest.
-2. Use the dev SSR module loader (`server.environments.ssr.runner.import(routeFile)`) to invoke `loader` + `head()`.
-3. Render the same way as build time, with an in-memory LRU keyed on `(path, sha256(head + loaderData))`.
-4. Respond with `Content-Type: image/png` and `Cache-Control: no-store` in dev.
-
-`handleHotUpdate` clears the LRU entries that involve the changed file's route module or any of its imported transitive sources for templates/fonts.
-
-This means **OG images Just Work in dev** — devs see the live image at `/og/blog/$slug.png` while iterating on a post.
-
-### 5. Production server route for dynamic OG
-
-For dynamic routes (or anything not prerendered), the plugin emits a TanStack Start server route at `routes/__og/$.png.ts` (virtual; written into the SSR bundle) that:
-
-1. Parses the request path back into a route + params (using the manifest).
-2. Imports the matched route module from the SSR build.
-3. Runs `loader` + `head` exactly like the dev middleware.
-4. Renders and returns the PNG, with `Cache-Control: public, max-age=31536000, immutable` keyed on a content hash query string the runtime helper appends.
-
-This is opt-in only when needed — we detect at build time whether any route has params or is excluded from the prerender set, and only emit the server route in that case. Pure-static sites pay zero runtime cost.
-
-### 6. Meta injection helper
-
-Exported as `@jxdltd/tanstack/og/router`:
+Generated by the plugin (or — fallback — re-exported by the user from a one-line route file). Pseudo-source:
 
 ```ts
-export function ogMeta(ctx: HeadContext): MetaEntry[];
+import template from "virtual:tanstack-og/template";
+import { handleOgRequest } from "@jxdltd/tanstack/og/server";
+
+export const ServerRoute = createServerFileRoute("/og/$").methods({
+  GET: ({ request }) => handleOgRequest(request, template),
+});
 ```
 
-It reads:
+`handleOgRequest`:
 
-- `ctx.matches` to find the deepest matched route's `path`.
-- A virtual manifest module (`virtual:tanstack-og/manifest`) the plugin generates with `{ path → imageUrl }` mappings, including content hashes.
-- The same `head` data already being constructed (title, description) so it can fill `og:title`, `og:description`, `twitter:title`, `twitter:description` consistently.
-- Plugin config (siteName, siteUrl, twitterHandle, defaultType) injected via the same virtual module.
+1. Strip the configured `routePath` prefix and `.png` suffix → candidate route path.
+2. Resolve to a matched route via TanStack Router's matcher; 404 on miss.
+3. Import the matched route module from the SSR build (prod) or via Vite's SSR runner (dev).
+4. Run `loader` and `head` to get `loaderData` and the merged head object.
+5. Extract `{ title, description, image }` from the head's `meta` array (mirrors `ogMeta`'s extraction logic).
+6. Call `template.render({ ... })`.
+7. Satori → SVG → Resvg → PNG.
+8. Respond with `Cache-Control: public, max-age=31536000, immutable` and an `ETag` set to the content hash.
 
-Returns the canonical set of tags (mirrors `auvia`'s `pageMeta`):
+### 4. Meta injection helper (`ogMeta`)
 
 ```ts
-[
-  { property: "og:type", content: "website" | "article" },
-  { property: "og:site_name", content: siteName },
-  { property: "og:title", content: title },
-  { property: "og:description", content: description },
-  { property: "og:url", content: canonicalUrl },
-  { property: "og:image", content: absImageUrl },
-  { property: "og:image:alt", content: title },
-  { name: "twitter:card", content: "summary_large_image" },
-  { name: "twitter:title", content: title },
-  { name: "twitter:description", content: description },
-  { name: "twitter:image", content: absImageUrl },
-  // article:published_time when type=article and date in staticData.og
-];
+export function ogMeta(
+  ctx: HeadContext,
+  options?: {
+    siteName?: string;
+    siteUrl?: string;
+    twitterHandle?: string;
+  },
+): MetaEntry[];
 ```
 
-Because root `head()` deduplicates by `name`/`property`, per-route `head()` can override any of these by emitting its own entry — preserving full user control.
+Reads `ctx.matches` for the deepest matched route's path, the existing `title` / `description` already on the head, and `staticData.og` for type/published-time hints. Emits:
 
-### 7. Default template
+- `og:type` (`website` | `article` from `staticData.og.type`)
+- `og:site_name`, `og:title`, `og:description`, `og:url`
+- `og:image`, `og:image:alt`, `og:image:width`, `og:image:height`
+- `twitter:card` = `summary_large_image`, `twitter:title`, `twitter:description`, `twitter:image`
+- `article:published_time` when applicable
+- `link rel=canonical`
 
-Bundled JSX template that renders:
+Image URL: `<siteUrl><routePath>/<matchedPath>.png?v=<hash>`. Hash is `sha256(JSON.stringify({ headMeta, loaderDataDigest, templateVersion }))`, computed during SSR — cheap, deterministic.
 
-- Site name (small, top-left)
-- Page title (large, wraps gracefully across 1–3 lines, accent underline on trailing word)
-- Description (one-line truncated)
-- Article metadata row (author / date / reading time) when `og:type === "article"`
+`siteUrl` resolves: explicit option → `VITE_SITE_URL` → `SITE_URL` → relative URL (with a one-time warning, since most crawlers require absolute URLs).
 
-Tuned for legibility at 1200×630 and at thumbnail size in feed previews. Looks good with the bundled default font.
+### 5. Caching strategy
 
-### 8. Cache
+This is the load-bearing claim of the runtime-only design.
 
-Two layers:
+**HTTP / CDN.**
 
-- **In-memory LRU** for dev requests.
-- **Disk cache** at `node_modules/.cache/tanstack-og/<hash>.png`, keyed on `sha256(template_source + font_set + head_object + loader_data + plugin_version)`. Build pass checks the disk cache first; only renders on miss. The cache lives outside `dist/` so `vite build --emptyOutDir` doesn't nuke it.
+- `Cache-Control: public, max-age=31536000, immutable` — safe because the URL is content-addressed via `?v=<hash>`.
+- `ETag: "<contentHash>"` for conditional revalidation.
+- Standard CDNs (Cloudflare, Fastly, Vercel, Netlify) coalesce origin traffic to ~1 request per `(path, hash)` per region. After warmup, origin load tends to zero until content changes.
 
-This addresses the auvia gotcha where template tweaks didn't invalidate the per-PNG hash file: the cache key includes the template source.
+**Origin LRU.**
 
-### 9. Fonts
+- In-memory `Map<hashKey, Buffer>` capped at e.g. 256 entries (~50–80 MB for 1200×630 PNGs).
+- In-flight dedupe — concurrent requests for the same hash await a single render promise.
+- Optional Nitro `useStorage` write-through for persistent cache between cold starts.
 
-- **Bundled default**: a single Inter Regular subset (~50 KB) compiled into the package as base64. Zero install steps, decent typography out of the box.
-- **User override** via `og({ fonts: [{ name: "Geist", data: "./fonts/Geist.ttf", weight: 500 }] })`. Accepts file paths, URLs, or `Buffer`s.
-- **Auto-detect Geist** if `geist` is in the user's deps and `fonts` is not provided — opportunistic upgrade, no breaking changes.
+### 6. Dev mode
+
+`configureServer` middleware mounts at the same path as the production route and reuses the same handler via Vite's SSR runner. Editing the template, a route's loader, or its head triggers an HMR signal that invalidates affected LRU entries; the next request re-renders. No separate dev pipeline, no surprises in prod.
+
+### 7. Workers / non-Node targets
+
+`@resvg/resvg-js` is a native Node module. For Cloudflare Workers / Deno Deploy:
+
+- The plugin reads the Nitro target adapter from `tanstackStart()` / `nitro()` config at `configResolved`.
+- For Worker-class targets, it swaps in `@resvg/resvg-wasm` at runtime. Template authors don't think about it.
 
 ## Configuration API
 
 ```ts
 type OgOptions = {
-  // Output
-  width?: number; // default 1200
-  height?: number; // default 630
-  outputDir?: string; // default "og"
+  // Where to find the user's template module.
+  templatePath?: string; // default: src/og/template.tsx (also tries .ts / .jsx)
 
-  // Site metadata (used in og:* tags + canonical URLs)
-  siteName?: string; // defaults to package.json name
-  siteUrl?: string; // defaults to env SITE_URL or VITE_SITE_URL; required for absolute og:image URLs in social crawlers
+  // Public mount path for the server route.
+  routePath?: string; // default: "/og"
+
+  // Site metadata used by ogMeta defaults (per-call options override).
+  siteName?: string;
+  siteUrl?: string;
   twitterHandle?: string;
-  defaultType?: "website" | "article";
 
-  // Routes
-  routes?:
-    | "auto" // discover from route tree
-    | { include?: string[]; exclude?: string[] }
-    | { dynamic?: Record<string, () => string[] | Promise<string[]>> };
-  filter?: (entry: RouteEntry) => boolean; // composes with above
-
-  // Template
-  template?: "default" | OgTemplateFn;
-  // (template, type) keyed map allows per-type templates without writing a discriminator
-  templates?: Record<string, OgTemplateFn>;
-
-  // Fonts
-  fonts?: Array<{
-    name: string;
-    data: string | Buffer | URL;
-    weight?: number;
-    style?: "normal" | "italic";
-  }>;
-
-  // Caching
-  cache?: boolean | { dir?: string };
-
-  // Meta injection
-  injectMeta?: boolean; // default true; disables ogMeta if false
-
-  // Dev
-  dev?: {
-    onDemand?: boolean; // default true
-    watch?: boolean; // default true
+  // Runtime caching tuning.
+  cache?: {
+    lru?: number | false; // default 256 entries; false disables
+    persist?: boolean; // default false; uses Nitro storage when true
   };
 
-  // Emit a runtime server route for dynamic params
-  runtime?: boolean | "auto"; // default "auto" – on if any unenumerated dynamic routes exist
+  // Force a renderer; default auto-selects based on Nitro target.
+  renderer?: "auto" | "node" | "wasm";
 };
-
-type OgTemplateFn = (ctx: {
-  route: { path: string; params?: Record<string, string> };
-  head: { title: string; description?: string; image?: string };
-  loaderData: unknown;
-  staticData?: { og?: Record<string, unknown> };
-  config: ResolvedOgConfig;
-}) => React.ReactNode;
 ```
 
-Sensible defaults mean **the empty `og()` call is a fully working install**. Every option above is optional.
+That is the entire surface. No `fonts` (template owns them). No `width`/`height` (template owns them). No `routes.*` filters (the route is matched on demand from the actual route tree). No `template` option (path is the only knob; the file owns design).
 
 ## Build flow
 
 ```
-0. Vite resolves plugins. og() registers, and configResolved
-   captures sibling tanstackStart() prerender config.
+vite build
+  ├─ TanStack Router plugin generates routeTree.gen.ts
+  ├─ og() emits the server route and virtual modules into the SSR build
+  ├─ Vite client + SSR builds run normally
+  └─ Nitro packages .output/
 
-1. Router plugin runs → src/routeTree.gen.ts is up to date.
-
-2. og() buildStart parses the route tree → RouteManifest.
-
-3. Vite builds SSR bundle (TanStack Start phase).
-   og()'s virtual:tanstack-og/manifest module is included so
-   SSR-rendered HTML's <meta> tags reference correct image URLs.
-
-4. Vite builds client bundle.
-
-5. og()'s closeBundle:
-   - Loads each static route module from the SSR build output
-   - Runs loader → head() → template → satori → resvg
-   - Checks disk cache; emits PNG if cache miss
-   - Writes manifest.json with { path, url, hash } per entry
-
-6. If runtime is enabled:
-   - Emits the /__og/$.png server route into the Nitro build
-
-7. Nitro packages .output/.
+No og worker pool, no PNG emission step, no asset manifest. Build-time impact: ~0.
 ```
-
-Everything fits inside `vite build`. No separate `og` script in `package.json` (unlike the auvia setup that runs `pnpm og && vite build`).
 
 ## Dev flow
 
 ```
 vite dev
   └─ og() configureServer
-       middleware: GET /og/<route>.png and /__og/<route>.png
-           → look up route in manifest
-           → import route module from SSR runner
-           → call loader + head()
-           → render template; sha256 cache key in LRU
-           → respond image/png
+       middleware: GET <routePath>/<path>.png
+         → match against current route tree
+         → SSR-import route module + template via Vite runner
+         → run loader → head → template.render
+         → satori → resvg → PNG
        handleHotUpdate
-           → invalidate cache entries touching the changed module
+         → invalidate LRU entries touching changed module
 ```
-
-Result: edits to a post's frontmatter or to the template hot-reload the OG image at the same URL the page references. No manual rebuild.
-
-## Runtime flow (production)
-
-For static routes: the meta tag points at `/og/<slug>.png?v=<hash>`. Hash is the build-time content hash. The PNG is a static file, served from CDN edges.
-
-For dynamic routes: the meta tag points at `/__og/<encoded-path>.png?v=<hash>`. The Nitro server route renders on demand and caches per `(path, hash)` — typically with `Cache-Control: public, max-age=31536000, immutable` and an LRU on the server.
 
 ## Edge cases & gotchas
 
-| Issue                                                | Resolution                                                                                                                                                                                                                          |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Auvia's manual manifest of static pages**          | Auto-discovery from the route tree. No manifest file; `staticData.og` is the only per-route knob.                                                                                                                                   |
-| **Auvia's hash cache missing template invalidation** | Cache key includes template source hash + font set + plugin version.                                                                                                                                                                |
-| **Fixed 1200×630**                                   | Configurable per-instance, plus a `templates` map for per-type variants (e.g., square 1080×1080 for Mastodon).                                                                                                                      |
-| **No runtime generation**                            | Built-in `/__og/$.png` server route covers dynamic params and conditional content.                                                                                                                                                  |
-| **Geist font lock-in**                               | Bundled default font; opt-in to Geist or any other; no hard dependency.                                                                                                                                                             |
-| **`SITE_URL` brittleness**                           | `siteUrl` plugin option, fallback to `VITE_SITE_URL`/`SITE_URL` env, fallback to relative URLs (which work in dev and on same-origin crawlers). Warn when absolute URLs are required but unresolved.                                |
-| **Routes that fail to load (loader throws)**         | Skip with a warning; continue building. Don't fail the build over a single OG image unless `failOnError: true`.                                                                                                                     |
-| **SPA mode (no SSR head)**                           | OG meta still works in `<head>` because Start's SPA shell prerenders to `_shell.html`. The plugin's static set in SPA mode is the shell + any explicitly enumerated paths. Document this.                                           |
-| **TanStack Solid**                                   | Out of scope for v1, but the plugin core (route discovery, satori, manifest) is framework-neutral. Solid support could be added by parameterizing the `head()` invocation.                                                          |
-| **Streaming SSR + meta**                             | TanStack Start emits `<HeadContent />` in the document head before any streaming body, so `og:*` tags are flushed in the initial response. No special handling needed.                                                              |
-| **Crawlers ignoring relative URLs**                  | Where `siteUrl` is set, all `og:image` and `twitter:image` URLs are absolute. We log a warning if `siteUrl` is missing in production builds.                                                                                        |
-| **Image URL stability for cached shares**            | Default to path-based URLs (`/og/blog/foo.png`) for stability; append `?v=<hash>` for cache busting. Crawlers that strip query strings still get the right image (URL path stable); crawlers that respect them get fresh content.   |
-| **CJK / multi-script titles**                        | Default font ships Latin only. Document how to add CJK fonts; consider an opt-in `unicodeRanges` option that lazy-loads NotoSans subsets.                                                                                           |
-| **Large sites (1000+ posts)**                        | Worker pool with `concurrency` matching CPU count; resumable cache; build-only emits PNGs that changed. Profile: at ~50ms/render, 10k routes ≈ 8 min single-threaded → ~1 min with 8 workers, then near-zero on incremental builds. |
+| Issue                                          | Resolution                                                                                                                                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **First-render cold latency**                  | Acceptable (50–250 ms ≪ crawler timeouts); CDN absorbs everything else.                                                                                                               |
+| **Cache busting on content edit**              | URL contains `?v=<hash>` derived from head + loaderData. Edit → new hash → new URL → fresh resource.                                                                                  |
+| **Cache busting on template edit**             | Template source hash is folded into the same digest at build time via the virtual config module. Deploying a template change rotates every URL.                                       |
+| **Crawlers stripping query strings**           | Path is stable (`/og/blog/foo.png`); they get the right image but stale until path changes. Acceptable. Optional path-encoded variant: `/og/blog/foo.<hash>.png` for paranoid setups. |
+| **Workers / wasm runtime**                     | `renderer: "auto"` swaps in `@resvg/resvg-wasm` for Worker-class Nitro adapters.                                                                                                      |
+| **Failed render (template throws / bad font)** | Log structured error; respond `500` with a 1×1 transparent PNG so the page's `og:image` doesn't 404 and break shares.                                                                 |
+| **Concurrent identical requests**              | In-flight dedupe via promise map keyed on hash.                                                                                                                                       |
+| **Missing template**                           | Plugin throws at startup pointing at the expected path. No fallback rendering.                                                                                                        |
+| **`siteUrl` missing**                          | `og:image` becomes relative; build-time warning.                                                                                                                                      |
+| **SPA mode**                                   | Server route still works (Nitro is still in the build); behaviour identical.                                                                                                          |
+| **CJK / multi-script titles**                  | Template owns fonts → user adds NotoSans CJK if they need it. Not the plugin's problem.                                                                                               |
 
 ## Comparison to alternatives
 
-| Approach                                            | Tradeoff                                                                                                                      |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| **Hand-rolled per-project (auvia today)**           | Zero abstraction overhead; every project re-implements caching, font loading, route discovery, meta injection.                |
-| **Server-route-only (`/api/og.png?title=...`)**     | Simple, but each route must hand-construct its own OG URL with stringified params. Doesn't share `head()`. Doesn't prerender. |
-| **`@vercel/og` standalone**                         | Works on edge; needs runtime traffic for static OG images; awkward outside Next/Vercel.                                       |
-| **Browser-screenshot (puppeteer/`remix-og-image`)** | High fidelity for arbitrary CSS; slow, heavy install, painful in CI.                                                          |
-| **`vite-plugin-og`/community plugins**              | Generic; not aware of TanStack Start `head()` or routes. We win on integration.                                               |
+| Approach                                              | Tradeoff                                                                                                                          |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Hand-rolled per project (auvia today)**             | No abstraction; each project re-wires routing, caching, head injection.                                                           |
+| **Build-time prerender (earlier draft of this plan)** | Faster first hit at the cost of heavy plugin code, longer builds, stale images on content edits, manifest tracking. Not worth it. |
+| **`@vercel/og` standalone**                           | Same render core; not TanStack-Start-aware, no head/loader integration, no dev middleware.                                        |
+| **Browser-screenshot (Puppeteer / `remix-og-image`)** | Higher fidelity for arbitrary CSS; orders of magnitude slower; CI-hostile.                                                        |
 
 ## Phased implementation
 
-### Phase 1 — MVP (static prerender)
+### Phase 1 — Runtime MVP
 
-- [ ] `og()` plugin scaffolding, options parsing, defaults.
-- [ ] Route discovery via `routeTree.gen.ts` parser.
-- [ ] Worker that loads SSR bundle and invokes `loader + head()`.
-- [ ] Default JSX template.
-- [ ] Bundled Inter font.
-- [ ] Satori + Resvg rendering pipeline.
-- [ ] `closeBundle` emits PNGs; writes `manifest.json`.
-- [ ] `@jxdltd/tanstack/og/router` exports `ogMeta(ctx)`.
-- [ ] Disk cache with template+font version keys.
+- [ ] Plugin scaffold + options parsing.
+- [ ] Virtual modules: `virtual:tanstack-og/template`, `virtual:tanstack-og/config`.
+- [ ] Server route emission into the TanStack Start route tree.
+- [ ] `handleOgRequest` runtime helper (route match → loader → head → satori → resvg → cache headers).
+- [ ] `ogMeta(ctx, options?)` helper.
+- [ ] `defineOgTemplate(spec)` typed identity helper.
+- [ ] `configureServer` dev middleware using Vite SSR runner.
+- [ ] In-memory LRU + in-flight dedupe.
 
-**Exit criteria:** `vite build` on the `tanstack` website (this repo's `apps/website`) produces working OG images for all static routes, with one plugin entry and one `head()` spread.
+**Exit criteria.** Adding `og()`, writing `src/og/template.tsx`, and spreading `...ogMeta(ctx)` once in `__root.tsx` produces working OG images for every route in dev and prod, with no other configuration.
 
-### Phase 2 — Dev middleware
+### Phase 2 — Runtime hardening
 
-- [ ] `configureServer` middleware mounting `/og/*.png` + `/__og/*.png`.
-- [ ] Live re-render on `handleHotUpdate`.
-- [ ] LRU memoization with reasonable size cap.
+- [ ] `@resvg/resvg-wasm` fallback for Workers / Deno targets, auto-selected from the Nitro adapter.
+- [ ] Nitro `useStorage` persistent cache.
+- [ ] Failure-path 1×1 PNG with structured logs.
+- [ ] `npx tanstack-og warm <baseUrl>` — walks sitemap and pre-pings each `og:image` so the first crawler hit is hot after deploys.
 
-**Exit criteria:** editing a route file or template re-renders OG live in dev within a single HMR cycle.
+### Phase 3 — Optional build-time prerender
 
-### Phase 3 — Dynamic routes
+If real-world deployments require it (static-only hosts, very latency-sensitive crawlers), add an opt-in `prerender: true` mode that walks the route tree at `closeBundle` and emits PNGs alongside the static client output. Reuses the same template + handler — just runs them at build time. **Disabled by default.**
 
-- [ ] User-supplied dynamic enumeration (`routes.dynamic`).
-- [ ] Auto-bridge to `tanstackStart({ prerender: { pages } })` so users configure paths once.
-- [ ] Emit `/__og/$.png` Nitro server route when needed.
-- [ ] Server-side LRU + immutable cache headers.
+### Phase 4 — DX polish
 
-**Exit criteria:** a blog with 50 dynamic posts gets prerendered OGs; a brand-new post gets a runtime OG without redeploying.
-
-### Phase 4 — Polish
-
-- [ ] `templates` map for per-type variants.
-- [ ] Auto-detect Geist; pluggable font registry.
-- [ ] Optional `unicodeRanges` for CJK fallback.
-- [ ] `failOnError`, `concurrency`, build telemetry.
-- [ ] Docs site with playground (drop a JSX template, see live preview).
-
-### Phase 5 — Stretch
-
-- [ ] Solid Start support (`@tanstack/solid-start`).
-- [ ] Per-platform sizes (Mastodon square, Pinterest portrait) via the templates map.
-- [ ] CLI: `npx tanstack-og preview /blog/foo` to render+open a single PNG locally.
-- [ ] Storybook-style template gallery.
+- [ ] `npx tanstack-og preview /blog/foo` opens a live preview against the dev server.
+- [ ] Solid Start support (parameterise `head()` invocation).
+- [ ] Per-type templates by branching convention (documented; no new API).
 
 ## Open questions
 
-1. **Where in the plugin chain do we sit relative to `tanstackStart()`?** We need its config (`prerender`, `srcDirectory`) at `configResolved`. Confirm Vite plugin ordering guarantees and whether `tanstackStart()` exposes its resolved options on the plugin instance — if not, we duplicate a small amount of config (`srcDirectory`).
-2. **Loader execution model.** Running route loaders in a worker requires the SSR bundle to expose them. TanStack Start's prerender already does this; we should reuse the same module loader if it's exposed. Otherwise, an in-process import of the SSR bundle is simpler but blocks the main build thread.
-3. **`staticData` API stability.** TanStack Router's `staticData` is the obvious place for `og: { template, ... }` overrides. Verify it survives codegen and is reachable from a build-time route walk without executing the route module.
-4. **Type safety for `template` callbacks.** The template gets `loaderData` typed as `unknown` because we can't infer it across routes generically. Could expose a `defineOgTemplate<TLoaderData>()` helper for typed overrides per route.
-5. **Bundling Resvg.** `@resvg/resvg-js` is a native module. Mark `external` for SSR and run only inside the build worker. Works in Nitro at runtime only on Node platforms — for Cloudflare Workers, fall back to `@resvg/resvg-wasm`. Detect target adapter and swap.
-6. **Cache-busting strategy with edge CDNs.** Path-stable URLs with `?v=<hash>` — confirm major social crawlers (FB, X, LinkedIn, Slack, Discord) handle the query string consistently.
+1. **Server-route emission API.** What's the supported way to inject a server file route into TanStack Start's tree from a Vite plugin? Options: (a) write a real source file under `src/routes/__og.$.png.ts` at install time; (b) virtual route module via `@tanstack/router-plugin`; (c) document a one-line user re-export. (b) is cleanest if the plugin API supports it; (c) is the no-magic fallback.
+2. **Hash inputs.** Should the URL hash digest use full `loaderData` (safe, may churn) or only `title` / `description` / `image` / a user-provided `versionFor(loaderData)` hook? Default to head meta + optional hook.
+3. **Dynamic font swapping.** Templates declare fonts statically. If a template wants per-render fonts (locale-dependent), allow `render` to optionally return `{ jsx, fonts }`. Defer until requested.
+4. **`loaderData` typing.** Per-route types can't be inferred generically. Provide `defineOgTemplate<TLoaderData>()` and document a `staticData.og.loaderData satisfies T` pattern for typed branches.
+5. **Nitro vs. Start route shape.** Bare Nitro `eventHandler` is portable across Start versions; `createServerFileRoute` is more idiomatic. Detect at build and pick automatically.
 
 ## TL;DR
 
-A Vite plugin that walks the TanStack Start route tree, runs each route's existing `head()` + `loader` to derive title/description/image data, renders a JSX template with Satori + Resvg, emits PNGs at build time (and on demand in dev / for dynamic routes), and ships a one-call helper that injects the matching `og:*` and `twitter:*` meta tags. All the auvia gotchas — manual manifest, fixed sizes, build-time-only, font lock-in, template cache invalidation, `SITE_URL` brittleness — are addressed by design.
+One server route. User-written template. Cache-Control headers do the rest. The plugin's job is to wire TanStack Start's `head()` and route tree to a single Satori + Resvg handler — not to orchestrate a build pipeline or impose a default design.
