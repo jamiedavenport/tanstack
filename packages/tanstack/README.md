@@ -60,22 +60,21 @@ Keys are constrained to your project's `FileRoutesByPath` (which TanStack Router
 
 ```tsx
 // src/og/template.tsx
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { defineOgTemplate, type OgTemplateFont } from "@jxdltd/tanstack/og";
+import GeistRegular from "geist/dist/fonts/geist-sans/Geist-Regular.ttf?inline";
+import GeistMedium from "geist/dist/fonts/geist-sans/Geist-Medium.ttf?inline";
 
-const sans = (file: string) =>
-  readFileSync(join(process.cwd(), "node_modules/geist/dist/fonts/geist-sans", file));
+const decode = (dataUrl: string) => Buffer.from(dataUrl.split(",")[1], "base64");
 
-const loadFonts = (): OgTemplateFont[] => [
-  { name: "Geist", data: sans("Geist-Regular.ttf"), weight: 400, style: "normal" },
-  { name: "Geist", data: sans("Geist-Medium.ttf"), weight: 500, style: "normal" },
+const fonts: OgTemplateFont[] = [
+  { name: "Geist", data: decode(GeistRegular), weight: 400, style: "normal" },
+  { name: "Geist", data: decode(GeistMedium), weight: 500, style: "normal" },
 ];
 
 export default defineOgTemplate({
   width: 1200,
   height: 630,
-  fonts: loadFonts, // function = lazy: only invoked on first render
+  fonts,
   render: ({ data }) => (
     <div
       style={{
@@ -95,7 +94,7 @@ export default defineOgTemplate({
 });
 ```
 
-`fonts` accepts either an array (eager) or a function returning an array (lazy). Use the function form if your fonts come from `node_modules` or otherwise touch the filesystem at module evaluation time — the resolver runs once on the first request and the result is reused.
+Importing fonts with Vite's `?inline` suffix bundles them into the build as base64 data URLs, so the template works in any runtime (Node, edge, serverless) without `node:fs` reads or `process.cwd()` path resolution. `fonts` accepts either an array (eager) or a function returning an array (lazy) — the lazy form runs once on the first request and the result is reused, useful if you'd rather defer decoding.
 
 ### 3. `routes/og/$.ts` — the server route
 
