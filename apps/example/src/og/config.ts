@@ -1,4 +1,4 @@
-import { defineOgConfig, ignoreOg } from "@jxdltd/tanstack/og";
+import { defineOgConfig, ignore } from "@jxdltd/tanstack/og";
 import { allPosts } from "content-collections";
 
 export default defineOgConfig({
@@ -18,7 +18,7 @@ export default defineOgConfig({
 
   "/blog/$slug": ({ params }) => {
     const post = allPosts.find((p) => p.slug === params.slug);
-    if (!post) return ignoreOg;
+    if (!post) return ignore;
     return {
       title: post.title,
       description: post.excerpt,
@@ -29,5 +29,5 @@ export default defineOgConfig({
     };
   },
 
-  "/og/$": () => ignoreOg,
+  "/og/$": () => ignore,
 });

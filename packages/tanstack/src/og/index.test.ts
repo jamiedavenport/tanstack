@@ -3,7 +3,7 @@ import {
   defineOgConfig,
   defineOgTemplate,
   fromHead,
-  ignoreOg,
+  ignore,
   type OgConfig,
   type OgTemplateModule,
 } from "./index";
@@ -27,14 +27,14 @@ describe("defineOgTemplate", () => {
   });
 });
 
-describe("ignoreOg", () => {
+describe("ignore", () => {
   it("is a symbol with the package-namespaced description", () => {
-    expect(typeof ignoreOg).toBe("symbol");
-    expect(ignoreOg.toString()).toContain("@jxdltd/tanstack/og/ignore");
+    expect(typeof ignore).toBe("symbol");
+    expect(ignore.toString()).toContain("@jxdltd/tanstack/og/ignore");
   });
 
   it("is referentially stable across imports", () => {
-    expect(ignoreOg).toBe(ignoreOg);
+    expect(ignore).toBe(ignore);
   });
 });
 

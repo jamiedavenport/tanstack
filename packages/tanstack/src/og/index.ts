@@ -16,12 +16,12 @@ export type OgConfigContext<TParams> = {
   request: Request;
 };
 
-export const ignoreOg: unique symbol = Symbol("@jxdltd/tanstack/og/ignore");
-export type IgnoreOg = typeof ignoreOg;
+export const ignore: unique symbol = Symbol("@jxdltd/tanstack/og/ignore");
+export type Ignore = typeof ignore;
 
 export type OgConfigEntry<TParams = Record<string, string>> = (
   ctx: OgConfigContext<TParams>,
-) => OgData | IgnoreOg | Promise<OgData | IgnoreOg>;
+) => OgData | Ignore | Promise<OgData | Ignore>;
 
 type ParamName<S> = S extends `$${infer Name}` ? (Name extends "" ? "_splat" : Name) : never;
 

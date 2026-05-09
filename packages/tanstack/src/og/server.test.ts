@@ -13,7 +13,7 @@ vi.mock("@resvg/resvg-js", () => {
   return { Resvg: FakeResvg };
 });
 
-import { defineOgTemplate, ignoreOg, type OgConfig, type OgTemplateModule } from "./index";
+import { defineOgTemplate, ignore, type OgConfig, type OgTemplateModule } from "./index";
 import { createOgHandler } from "./server";
 
 const baseTemplate: OgTemplateModule = defineOgTemplate({
@@ -113,10 +113,10 @@ describe("createOgHandler", () => {
     });
   });
 
-  describe("ignoreOg", () => {
-    it("returns 404 when entry returns ignoreOg", async () => {
+  describe("ignore", () => {
+    it("returns 404 when entry returns ignore", async () => {
       const config = {
-        "/blog/$slug": () => ignoreOg,
+        "/blog/$slug": () => ignore,
       } as unknown as OgConfig;
       const handler = createOgHandler({ config, template: baseTemplate });
       const res = await handler({ request: makeRequest("/og/blog/missing.png") });

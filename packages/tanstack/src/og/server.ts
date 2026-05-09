@@ -5,7 +5,7 @@ import {
   type OgConfigEntry,
   type OgData,
   type OgTemplateModule,
-  ignoreOg,
+  ignore,
 } from "./index";
 
 export type CreateOgHandlerOptions = {
@@ -46,14 +46,14 @@ export function createOgHandler(options: CreateOgHandlerOptions): OgHandler {
     const entry = (config as Record<string, OgConfigEntry<Record<string, string>>>)[match.key];
     if (!entry) return fallbackOr404(request);
 
-    let data: OgData | typeof ignoreOg;
+    let data: OgData | typeof ignore;
     try {
       data = await entry({ params: match.params, request });
     } catch (err) {
       console.error("[og] config entry threw", err);
       return new Response(null, { status: 500 });
     }
-    if (data === ignoreOg) return fallbackOr404(request);
+    if (data === ignore) return fallbackOr404(request);
 
     const cacheKey = simpleHash(JSON.stringify(data));
 
