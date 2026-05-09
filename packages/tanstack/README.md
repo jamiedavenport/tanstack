@@ -277,33 +277,6 @@ const handler = createOgHandler({
 
 `ogMeta` always emits `og:image` for the current route. If a particular route should advertise a different image (e.g. a YouTube thumbnail for a video page), drop the `ogMeta` spread on that route and emit your own `meta` entries — they'll dedupe by `property`/`name` against any root-level entries.
 
-### Dev mode and `.png` URLs
-
-In dev, Vite's static asset middleware intercepts requests with file extensions before they reach TanStack Start's request handler. If your `og:image` URLs end in `.png`, add this Vite plugin to your config so the request reaches the route in dev (the build path is unaffected):
-
-```ts
-// vite.config.ts
-const ogDevStripPng = {
-  name: "og-dev-strip-png",
-  apply: "serve" as const,
-  configureServer(server: { middlewares: { use: (fn: unknown) => void } }) {
-    server.middlewares.use((req: { url?: string }, _res: unknown, next: () => void) => {
-      if (req.url) {
-        const m = req.url.match(/^(\/og\/[^?]*)\.png(\?.*)?$/);
-        if (m) req.url = m[1] + (m[2] ?? "");
-      }
-      next();
-    });
-  },
-};
-
-export default defineConfig({
-  plugins: [ogDevStripPng /* ... */],
-});
-```
-
-The handler matches both `/og/<path>` and `/og/<path>.png`, so the rewrite is purely about getting the request past Vite's static layer in dev.
-
 ### Externalising native bindings
 
 `@resvg/resvg-js` ships native bindings. When using Vite + Nitro, externalise it so Rolldown doesn't try to bundle the `.node` file:
