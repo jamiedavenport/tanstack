@@ -6,7 +6,7 @@ The package is split into subpath entrypoints. The first one shipped is **`/og`*
 
 - **One config file** keyed by your typed route paths from `routeTree.gen.ts`.
 - **One template file** for design + dimensions + fonts.
-- **One server route** at `/og/$` that renders PNGs via [Satori](https://github.com/vercel/satori) + [Resvg](https://github.com/yisibl/resvg-js).
+- **One server route** at `/og/$` that renders PNGs via [Satori](https://github.com/vercel/satori) + [Resvg](https://github.com/yisibl/resvg-js), with entries for Node (`og/server`) and edge/workers runtimes (`og/edge`).
 - **One head spread** in each route that should expose an `og:image`.
 
 ```bash
@@ -125,6 +125,8 @@ The handler:
 - Responds `Content-Type: image/png`, `Cache-Control: public, max-age=31536000, immutable`, and an `ETag` derived from the rendered data.
 - Caches PNGs in-process and dedupes concurrent identical requests.
 
+Deploying to Cloudflare Workers, Vercel Edge, or Deno Deploy? Import `createOgHandler` from `@jxdltd/tanstack/og/edge` instead and pass the `wasm` option — see the [API reference](#jxdltdtanstackogedge).
+
 ### 4. `__root.tsx` (or per-route) — the head spread
 
 ```tsx
@@ -208,13 +210,16 @@ type Multi = RouteParams<"/users/$id/posts/$postId">;
 
 ### `@jxdltd/tanstack/og/server`
 
-#### `createOgHandler({ config, template, fallback? })`
+#### `createOgHandler({ config, template, fallback?, cache? })`
 
 Returns `(ctx: { request: Request }) => Promise<Response>`.
 
 - `config` — from `defineOgConfig`.
 - `template` — from `defineOgTemplate`.
 - `fallback?` — optional `(ctx) => Response | Promise<Response>` for unmatched paths (default: `404`).
+- `cache?` — optional `{ get(key), set(key, png) }` (sync or async) replacing the default in-process `Map`. See [Caching model](#caching-model).
+
+This entry renders with `@resvg/resvg-js` (native bindings) and requires Node. For Cloudflare Workers, Vercel Edge, or Deno Deploy use [`@jxdltd/tanstack/og/edge`](#jxdltdtanstackogedge) instead.
 
 The matcher is permissive about extension and trailing slashes:
 
@@ -227,6 +232,71 @@ The matcher is permissive about extension and trailing slashes:
 | `/og/files/a/b/c.png` | `/files/$`            |
 
 Param values are URL-decoded before being passed to the entry. The cache key is a hash of `JSON.stringify(data)` — so when your data changes, the ETag rotates and downstream caches refresh.
+
+### `@jxdltd/tanstack/og/edge`
+
+#### `createOgHandler({ config, template, wasm, fallback?, cache? })`
+
+Same handler as `og/server`, built for wasm-only runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy). It renders with `satori/standalone` and `@resvg/resvg-wasm` instead of the native `@resvg/resvg-js`, so it has no Node dependency.
+
+The one extra option is required:
+
+- `wasm.yoga` — Satori's Yoga layout engine binary.
+- `wasm.resvg` — the resvg binary.
+
+Both accept a `WebAssembly.Module`, raw bytes (`ArrayBuffer` / typed array), a `Response`, or a promise of any of those. You provide the binaries because loading `.wasm` assets is bundler-specific. On Cloudflare Workers:
+
+```ts
+// src/routes/og/$.ts
+import yogaWasm from "satori/yoga.wasm";
+import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
+import { createOgHandler } from "@jxdltd/tanstack/og/edge";
+import config from "../../og/config";
+import template from "../../og/template";
+
+const handler = createOgHandler({
+  config,
+  template,
+  wasm: { yoga: yogaWasm, resvg: resvgWasm },
+});
+```
+
+On runtimes where you can't import wasm as a module, fetch it instead:
+
+```ts
+wasm: {
+  yoga: fetch(new URL("satori/yoga.wasm", import.meta.url)),
+  resvg: fetch(new URL("@resvg/resvg-wasm/index_bg.wasm", import.meta.url)),
+}
+```
+
+Notes:
+
+- Initialization is **lazy**: the wasm binaries are compiled on the first matching request, not at module load, and unmatched/ignored paths never trigger it.
+- Initialization happens **once per isolate**, even across multiple handlers — the first handler's `wasm` binaries win. A failed init resets so the next request retries.
+- Do not inline the binaries as base64 — Yoga plus resvg is roughly 2 MB and base64 inflation can blow past worker bundle limits. Import them as wasm modules or fetch them.
+- Worker isolates recycle often, so the default in-memory cache has a low hit rate there. Pass `cache` backed by the Cache API when you want origin-side reuse (the CDN-level `Cache-Control: immutable` still does most of the work):
+
+```ts
+const handler = createOgHandler({
+  config,
+  template,
+  wasm: { yoga: yogaWasm, resvg: resvgWasm },
+  cache: {
+    get: async (key) => {
+      const hit = await caches.default.match(`https://og-cache.invalid/${key}`);
+      if (!hit) return undefined;
+      return new Uint8Array(await hit.arrayBuffer());
+    },
+    set: async (key, png) => {
+      await caches.default.put(
+        `https://og-cache.invalid/${key}`,
+        new Response(png, { headers: { "Cache-Control": "max-age=31536000" } }),
+      );
+    },
+  },
+});
+```
 
 ### `@jxdltd/tanstack/og/router`
 
@@ -298,12 +368,13 @@ export default defineConfig({
 
 - **HTTP**: `Cache-Control: public, max-age=31536000, immutable` plus an `ETag` derived from the rendered data. CDNs absorb everything past the first miss per region.
 - **Origin**: in-process `Map<hash, Uint8Array>` plus an in-flight promise map so concurrent identical requests share a single render. The cache is unbounded — for long-lived workloads behind a hot CDN this is fine; if you have many distinct cards per process consider clearing periodically.
+- **Pluggable**: both entries accept `cache: { get, set }` (sync or async) to replace the in-process `Map` — for example an LRU in Node, or the Cache API on workers where isolates recycle too often for in-memory caching to pay off. The in-flight dedupe always stays in-process.
 
 ## Limitations
 
 - **Runtime only.** The handler runs on demand. For fully static deployments where no server is available, prerender the OG paths alongside your HTML pages or invoke the handler at build time.
 - **Synchronous `ogMeta`.** Because `head()` is typically synchronous and we don't want to double-fetch your data, `ogMeta` only builds URLs — it doesn't run config entries. If you need per-content cache busting in URLs, append a query string yourself (`?v=<hash>`).
-- **Native bindings.** `@resvg/resvg-js` is Node-only. For Cloudflare Workers / Deno Deploy, you'll want a wasm fallback (not yet shipped).
+- **Native bindings on the Node entry.** `og/server` depends on `@resvg/resvg-js`, which is Node-only. On Cloudflare Workers / Vercel Edge / Deno Deploy use `og/edge`, which is wasm-based but requires you to supply the Yoga and resvg binaries via the `wasm` option.
 
 ## License
 

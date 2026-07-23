@@ -359,7 +359,21 @@ Without the plugin, everything still works — the user writes the route mount t
 
 ### 8. Workers / non-Node targets
 
-`@resvg/resvg-js` is native. For Cloudflare Workers / Deno Deploy, the handler swaps in `@resvg/resvg-wasm` based on the Nitro target adapter (auto-detected from `tanstackStart()` / `nitro()` config, or explicit via `renderer: "wasm"`).
+`@resvg/resvg-js` is native, so `@jxdltd/tanstack/og/server` is Node-only. For Cloudflare Workers / Vercel Edge / Deno Deploy, import `createOgHandler` from `@jxdltd/tanstack/og/edge` instead: same options plus a required `wasm` field carrying the Yoga and resvg wasm binaries (`WebAssembly.Module`, bytes, or a `Response`), since obtaining a wasm module is bundler-specific:
+
+```ts
+import yogaWasm from "satori/yoga.wasm";
+import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
+import { createOgHandler } from "@jxdltd/tanstack/og/edge";
+
+const handler = createOgHandler({
+  config,
+  template,
+  wasm: { yoga: yogaWasm, resvg: resvgWasm },
+});
+```
+
+Wasm initialization is lazy (first matching request) and happens once per isolate. Both entries also accept an optional `cache: { get, set }` so worker deployments can back the PNG cache with the Cache API instead of the default in-memory `Map`.
 
 ## Configuration API
 
@@ -422,7 +436,7 @@ vite dev
 | **Cache busting on content edit**                      | URL hash includes `OgData` JSON. Edit → new hash → new URL → fresh resource.                                                                                                   |
 | **Cache busting on template edit**                     | Template source hash is folded into the URL hash via the virtual config module. Deploy rotates every URL.                                                                      |
 | **Crawlers stripping query strings**                   | Path is stable (`/og/blog/foo.png`); they get the right image but stale until content path changes. Acceptable. Optional `<hash>`-in-path encoding: `/og/blog/foo.<hash>.png`. |
-| **Workers / wasm runtime**                             | `renderer: "auto"` swaps in `@resvg/resvg-wasm` for Worker-class adapters.                                                                                                     |
+| **Workers / wasm runtime**                             | Import from `og/edge` instead of `og/server`; pass the Yoga + resvg wasm binaries via the `wasm` option.                                                                       |
 | **Failed render (template throws / bad font)**         | Log structured error; respond `500` with a 1×1 transparent PNG so the page's `og:image` doesn't 404 in social validators.                                                      |
 | **Concurrent identical requests**                      | In-flight dedupe via promise map keyed on hash.                                                                                                                                |
 | **Missing config / template**                          | Library throws at startup pointing at the expected path.                                                                                                                       |
@@ -466,7 +480,7 @@ vite dev
 
 ### Phase 3 — Runtime hardening
 
-- [ ] `@resvg/resvg-wasm` fallback auto-selected from Nitro adapter.
+- [x] `@resvg/resvg-wasm` support via the explicit `og/edge` entry (`wasm` option; auto-selection from the Nitro adapter deferred).
 - [ ] Nitro `useStorage` persistent cache.
 - [ ] Failure-path 1×1 PNG with structured logs.
 - [ ] `npx tanstack-og warm <baseUrl>`: walk sitemap, pre-ping each `og:image` so the first crawler hit is hot after deploys.

@@ -19,6 +19,10 @@
       "types": "./dist/og/server.d.mts",
       "import": "./dist/og/server.mjs"
     },
+    "./og/edge": {
+      "types": "./dist/og/edge.d.mts",
+      "import": "./dist/og/edge.mjs"
+    },
     "./og/router": {
       "types": "./dist/og/router.d.mts",
       "import": "./dist/og/router.mjs"
@@ -35,7 +39,7 @@
     "check": "vp check"
   },
   "dependencies": {
-    "@resvg/resvg-js": "^2.6.2",
+    "@resvg/resvg-wasm": "^2.6.2",
     "satori": "^0.26.0"
   },
   "devDependencies": {
@@ -54,5 +58,8 @@
     "@tanstack/react-router": {
       "optional": true
     }
+  },
+  "optionalDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
   }
 }
