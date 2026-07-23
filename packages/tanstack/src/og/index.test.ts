@@ -5,6 +5,7 @@ import {
   fromHead,
   ignore,
   type OgConfig,
+  type OgConfigEntry,
   type OgConfigFor,
   type OgTemplateModule,
   type RouteParams,
@@ -24,7 +25,10 @@ describe("OgConfigFor", () => {
       "/_layout/about": { id: "/_layout/about"; path: "/about"; fullPath: "/about" };
       "/blog/$slug": { id: "/blog/$slug"; path: "/blog/$slug"; fullPath: "/blog/$slug" };
     };
-    expectTypeOf<keyof OgConfigFor<Routes>>().toEqualTypeOf<"/about" | "/blog/$slug">();
+    expectTypeOf<OgConfigFor<Routes>>().toEqualTypeOf<{
+      "/about"?: OgConfigEntry<Record<string, never>>;
+      "/blog/$slug"?: OgConfigEntry<{ slug: string }>;
+    }>();
     expectTypeOf<RouteParams<"/blog/$slug">>().toEqualTypeOf<{ slug: string }>();
   });
 });

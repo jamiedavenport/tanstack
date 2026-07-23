@@ -52,7 +52,7 @@ export default defineOgConfig({
 });
 ```
 
-Keys are constrained to your project's resolved route paths (the `fullPath` of each entry TanStack Router augments into `FileRoutesByPath` via `routeTree.gen.ts`), so pathless layout segments like `_layout` never appear in keys. Every known route is **required** in the config — omitting one is a TypeScript error. Use `ignore` (returned from the entry function) when a route shouldn't expose an OG card.
+Keys are constrained to your project's resolved route paths (the `fullPath` of each entry TanStack Router augments into `FileRoutesByPath` via `routeTree.gen.ts`), so pathless layout segments like `_layout` never appear in keys. Every entry is **optional** — routes without one fall through to the handler's `fallback` (or a 404). Annotate your config with `Required<OgConfig>` if you want TypeScript to enforce a decision for every route, and use `ignore` (returned from the entry function) when a route shouldn't expose an OG card.
 
 `params` is typed per-key from the path: `/blog/$slug` gets `{ slug: string }`, `/files/$` gets `{ _splat: string }`, `/` gets `Record<string, never>`.
 
