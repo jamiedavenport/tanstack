@@ -1,17 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   defineOgConfig,
   defineOgTemplate,
   fromHead,
   ignore,
   type OgConfig,
+  type OgConfigFor,
   type OgTemplateModule,
+  type RouteParams,
 } from "./index";
 
 describe("defineOgConfig", () => {
   it("returns the input as-is", () => {
     const config = {} as OgConfig;
     expect(defineOgConfig(config)).toBe(config);
+  });
+});
+
+describe("OgConfigFor", () => {
+  it("keys entries by resolved fullPath, not route ID", () => {
+    type Routes = {
+      "/_layout": { id: "/_layout"; path: ""; fullPath: "" };
+      "/_layout/about": { id: "/_layout/about"; path: "/about"; fullPath: "/about" };
+      "/blog/$slug": { id: "/blog/$slug"; path: "/blog/$slug"; fullPath: "/blog/$slug" };
+    };
+    expectTypeOf<keyof OgConfigFor<Routes>>().toEqualTypeOf<"/about" | "/blog/$slug">();
+    expectTypeOf<RouteParams<"/blog/$slug">>().toEqualTypeOf<{ slug: string }>();
   });
 });
 

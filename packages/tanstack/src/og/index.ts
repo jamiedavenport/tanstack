@@ -33,9 +33,17 @@ export type RouteParams<P extends string> = [ParamNames<P>] extends [never]
   ? Record<string, never>
   : { [K in ParamNames<P>]: string };
 
-export type OgConfig = {
-  [P in keyof FileRoutesByPath]: OgConfigEntry<RouteParams<P & string>>;
+// Keyed by each route's resolved fullPath rather than its route ID, so keys
+// match the URL paths the runtime matcher receives. Route IDs include pathless
+// layout segments (e.g. "/_layout/about") that never appear in URLs. Pathless
+// layout routes themselves resolve to "" and are excluded.
+type FullPathOf<TRoute> = TRoute extends { fullPath: infer F extends string } ? F : never;
+
+export type OgConfigFor<TRoutes> = {
+  [P in Exclude<FullPathOf<TRoutes[keyof TRoutes]>, "">]: OgConfigEntry<RouteParams<P>>;
 };
+
+export type OgConfig = OgConfigFor<FileRoutesByPath>;
 
 export function defineOgConfig(config: OgConfig): OgConfig {
   return config;
